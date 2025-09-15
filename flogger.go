@@ -11,6 +11,13 @@ import (
 	"syscall"
 )
 
+type MessageType uint8
+
+const (
+	InfoMessage MessageType = iota
+	CriticalMessage
+)
+
 // Logger manages the connection to the flogger server.
 type Logger struct {
 	conn     net.Conn
@@ -46,6 +53,11 @@ func (l *Logger) send(msg []byte) error {
 
 	var buf bytes.Buffer
 
+	// Write message type (uint8)
+	if err := binary.Write(&buf, binary.BigEndian, InfoMessage); err != nil {
+		return fmt.Errorf("writing message type: %w", err)
+	}
+
 	// Write client ID (int32)
 	if err := binary.Write(&buf, binary.BigEndian, l.clientID); err != nil {
 		return fmt.Errorf("writing client id: %w", err)
@@ -72,22 +84,22 @@ func (l *Logger) send(msg []byte) error {
 // Printf sends a formatted log message to the server.
 func (l *Logger) Printf(format string, v ...interface{}) {
 	if err := l.send([]byte(fmt.Sprintf(format, v...))); err != nil {
-		fmt.Fprintf(os.Stderr, "flogger error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
 }
 
 // Println sends a log message to the server.
 func (l *Logger) Println(v ...interface{}) {
 	msg := fmt.Sprintln(v...)
-	if err := l.send([]byte(msg[:len(msg)-1])); err != nil {
-		fmt.Fprintf(os.Stderr, "flogger error: %v\n", err)
+	if err := l.send([]byte(msg)); err != nil {
+		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
 }
 
 // Print sends a log message to the server.
 func (l *Logger) Print(v ...interface{}) {
 	if err := l.send([]byte(fmt.Sprint(v...))); err != nil {
-		fmt.Fprintf(os.Stderr, "flogger error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
 }
 
