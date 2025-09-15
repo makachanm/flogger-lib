@@ -3,6 +3,7 @@ package flogger
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -47,14 +48,14 @@ func (l *Logger) Close() error {
 }
 
 // send formats and writes the log message to the server.
-func (l *Logger) send(msg []byte) error {
+func (l *Logger) send(msgType MessageType, msg []byte) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	var buf bytes.Buffer
 
 	// Write message type (uint8)
-	if err := binary.Write(&buf, binary.BigEndian, InfoMessage); err != nil {
+	if err := binary.Write(&buf, binary.BigEndian, msgType); err != nil {
 		return fmt.Errorf("writing message type: %w", err)
 	}
 
@@ -83,7 +84,7 @@ func (l *Logger) send(msg []byte) error {
 
 // Printf sends a formatted log message to the server.
 func (l *Logger) Printf(format string, v ...interface{}) {
-	if err := l.send([]byte(fmt.Sprintf(format, v...))); err != nil {
+	if err := l.send(InfoMessage, []byte(fmt.Sprintf(format, v...))); err != nil {
 		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
 }
@@ -91,16 +92,26 @@ func (l *Logger) Printf(format string, v ...interface{}) {
 // Println sends a log message to the server.
 func (l *Logger) Println(v ...interface{}) {
 	msg := fmt.Sprintln(v...)
-	if err := l.send([]byte(msg)); err != nil {
+	if err := l.send(InfoMessage, []byte(msg)); err != nil {
 		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
 }
 
 // Print sends a log message to the server.
 func (l *Logger) Print(v ...interface{}) {
-	if err := l.send([]byte(fmt.Sprint(v...))); err != nil {
+	if err := l.send(InfoMessage, []byte(fmt.Sprint(v...))); err != nil {
 		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
 	}
+}
+
+// Errorf sends a formatted error message to the server and returns an error.
+func (l *Logger) Errorf(format string, v ...interface{}) error {
+	msg := fmt.Sprintf(format, v...)
+	if err := l.send(CriticalMessage, []byte(msg)); err != nil {
+		// If sending fails, include that error in the output to stderr
+		fmt.Fprintf(os.Stderr, "flogger error: %v", err)
+	}
+	return errors.New(msg)
 }
 
 // --- Default Logger ---
@@ -144,6 +155,15 @@ func Print(v ...interface{}) {
 	if defaultLogger != nil {
 		defaultLogger.Print(v...)
 	}
+}
+
+// Errorf sends a formatted error message using the default logger and returns an error.
+func Errorf(format string, v ...interface{}) error {
+	if defaultLogger != nil {
+		return defaultLogger.Errorf(format, v...)
+	}
+	// If the logger isn't initialized, just return a standard error
+	return fmt.Errorf(format, v...)
 }
 
 // CloseDefault closes the connection for the default logger.
